@@ -1,0 +1,951 @@
+---
+title: "datacounts"
+author: "MLP"
+date: "2021/7/4"
+output: html_document
+---
+```{r}
+rm(list = ls())
+options(stringsAsFactors = F)
+data= read.csv('A01_Datafile/PJP_counts.csv',header = T)  #header
+data<-data[which(!duplicated(data$gene_name)),]
+```
+
+```{r}
+library(tidyverse)
+#meta=a[,1:6]
+exprSet=data
+rownames(exprSet)<-exprSet[,1]
+exprSet<-exprSet[,-1]
+exprSet<-exprSet[,sort(colnames(exprSet))]
+#colnames(exprSet)<-gsub(".hisat.bam","",colnames(exprSet))
+```
+
+
+```{r}
+#colnames(exprSet)<-rep(c("F","FU","U","W"),c(4,3,4,4))
+#exprSet<-exprSet[,-c(2,7,12,14)]
+exprSet<-exprSet[,-7]
+colnames(exprSet)<-gsub("_count","",colnames(exprSet))
+colnames(exprSet)
+#write.csv(exprSet,"A01_Datafile/exprset_counts_0808.csv")
+
+#colnames(exprSet)<-paste(rep(c("F","FU","U","W"),c(4,3,4,4)),1:4,sep="_")
+#effLen<-meta[,6]
+```
+
+```{r}
+# Counts2TPM <- function(counts, effLen){
+#   rate <- log(counts) - log(effLen)
+#   denom <- log(sum(exp(rate)))
+#   exp(rate - denom + log(1e6))
+# }
+# TPM<-Counts2TPM(exprSet,effLen)
+# str(TPM)
+# TPM2 <- TPM[ rowSums(TPM) > 0, ]
+# head(TPM2)
+```
+
+```{r}
+library(pheatmap)
+library(corrplot)
+corrplot(cor(exprSet)) 
+morecols <- colorRampPalette(c("red","white","springgreen","royalblue"))
+pheatmap(scale(cor(log2(exprSet+1))),color =rev( morecols(50)))
+# png('heatmap.png')
+# 
+# corrplot(cor(exprSet))
+# pheatmap(scale(cor(log2(exprSet+1))))
+# dev.off()
+pheatmap(exprSet[rowSums(exprSet>5),],scale = "row",show_colnames = T,show_rownames=F)
+ library(pheatmap)
+help("pheatmap")
+```
+
+```{r}
+# group_list= factor(rep(c("FAD","FAD_ULK1","ULK1","WT"),each=3))
+# group_list
+# colData=data.frame(row.names = colnames(exprSet),
+#                    group=group_list)
+# colData$group<-relevel(colData$group,ref="WT")
+```
+
+
+```{r}
+library(DESeq2)
+#dir.create("Alldiffenece")
+group=c("FAD","FAD_ULK1","ULK1","WT")
+num=c(4,3,4,4)
+num
+
+Batch_Deseq_differnece<-function(exprSet,group,num,save_dir="Alldiffenece",save_dir2="NEW_MA"){
+  ##create a folder 
+  save_dir<-paste0(save_dir,"/")
+  dir.create(save_dir)
+  ## creat a group
+  group_list= factor(rep(group,num))
+  group_list
+  colData=data.frame(row.names = colnames(exprSet),
+                     group=group_list)
+  
+  #dat<-data.frame()
+  ## use the Deseq2 to have Diffence analyse
+  for (i in 1:length(group)){
+    name=unique(group)[i]
+    print(name)
+    colData$group<-relevel(colData$group,ref=name)
+    dds=DESeq2::DESeqDataSetFromMatrix(countData = exprSet,
+                             colData = colData,
+                             design = ~group) 
+    dds <- dds[ rowSums(DESeq2::counts(dds)) > 10, ]
+    dds <- DESeq2::DESeq(dds)
+    for (j in 2:length(DESeq2::resultsNames(dds))){
+      
+    resname=DESeq2::resultsNames(dds)[j]
+    
+    res=DESeq2::results(dds, name=resname)
+    
+    res_lfc <- lfcShrink(dds, coef=j, res=res, type="apeglm")
+    res_lfc
+    #res=res_lfc
+    
+    summary(res_lfc)
+    summary(res)
+    
+    dir.create(save_dir)
+    write.csv(res,paste0(save_dir,resname,".csv"))
+    save_dir2=paste0(save_dir2,"/")
+    dir.create(save_dir2)
+   
+    
+    
+    save_dir_MA=paste0(save_dir2,"/",resname)
+    dir.create(save_dir_MA)
+    write.csv(res,paste0(save_dir_MA,"/",resname,"_res.csv"))
+    write.csv(res_lfc,paste0(save_dir_MA,"/",resname,"_reslfc.csv"))
+    png(paste0(save_dir_MA,"/",resname,"_MA.png"),width=600*3,height=3*600,res=72*3) 
+    plotMA(res, ylim=c(-3,3),main=paste0(resname," MA"))
+
+    dev.off()
+    png(paste0(save_dir_MA,"/",resname,"_MAlfc.png"),width=600*3,height=3*600,res=72*3) 
+    xlim <- c(1,1e5); ylim<-c(-3,3)
+    plotMA( res_lfc, xlim=xlim, ylim=ylim, main=paste0(resname," apeglm"))
+
+    dev.off()
+    
+    }
+   
+  }
+  
+}
+Batch_Deseq_differnece(exprSet,group,num,save_dir = "2021-08-09New",save_dir2="2021-08-9NEW_MA")
+#help("lfcShrink")
+#help("results")
+```
+
+
+```{r}
+library(DESeq2)
+group=c("FAD","FAD_ULK1")
+num=c(4,3)
+data3<-exprSet[,1:7]
+group2<-rep(group,num)
+colData=data.frame(row.names = colnames(data3),
+                     group=group2)
+data3<-data3[rowSums(data3)>1,]
+dds=DESeq2::DESeqDataSetFromMatrix(countData = data3,
+                             colData = colData,
+                             design = ~group) 
+    #dds <- dds[ rowSums(DESeq2::counts(dds)) > 10, ]
+    dds <- DESeq2::DESeq(dds)
+    resultsNames(dds) 
+    res <- results(dds, name= "group_FAD_ULK1_vs_FAD")
+    res <- lfcShrink(dds, coef="group_FAD_ULK1_vs_FAD", type="apeglm")
+    summary(res)
+    table(res$padj<0.05)
+b=subset(res,padj<0.05&abs(log2FoldChange)>1)
+b
+#a=subset(group_FAD_ULK1_vs_FAD,padj<0.05&abs(log2FoldChange)>1)
+#a
+#intersect(rownames(b),a$X)
+#Batch_Deseq_differnece(data3,group,num,save_dir = "NEW2",save_dir2="NEW_MA2")
+```
+```{r}
+library(edgeR)
+data4<-as.data.frame(exprSet)
+data5=data4[rowSums(as.data.frame(data4,))>1,]
+group3<-factor(rep(c("FAD","FAD_ULK1"),c(4,3)))
+group3
+genelist <- DGEList(counts=data5[,1:7], group = group3)
+keep <- rowSums(cpm(genelist) > 0.5 ) >=2
+table(keep)
+genelist.filted <- genelist[keep, ,keep.lib.sizes=FALSE]
+genelist.norm <- calcNormFactors(genelist.filted)
+design <- model.matrix(~0+group3)
+colnames(design) <- levels(group3)
+design
+genelist.Disp <- estimateDisp(genelist.norm, design, robust = TRUE)
+plotBCV(genelist.Disp)
+fit3 <- glmQLFit(genelist.Disp, design, robust=TRUE)
+  head(fit3$coefficients)
+  cntr.vs.KD <- makeContrasts(FAD-FAD_ULK1, levels=design)
+  
+res <- glmQLFTest(fit3, contrast=cntr.vs.KD)
+summary(res$table)
+res$table
+ig.edger <- res$table[p.adjust(res$table$PValue, method = "BH") < 0.05, ]
+topTags(res,n=20)
+is.de <- decideTestsDGE(res)
+summary(is.de)
+plotMD(res, status=is.de, values=c(1,-1), col=c("red","blue"),
+       legend="topright")
+```
+
+```{r}
+library(limma)
+help("modelMatrix")
+
+```
+```{r}
+# dds <- dds[ rowSums(counts(dds)) > 10, ]
+```
+
+```{r}
+# 
+# dds <- DESeq(dds, betaPrior = FALSE)
+# resultsNames(dds)
+```
+```{r}
+library(limma)
+
+library(edgeR)
+exprSet2<-exprSet[rowSums(exprSet)>1,]
+ dge <- DGEList(counts =exprSet2) #rawdata
+ dge <- calcNormFactors(dge)
+ logCPM <- cpm(dge, log=TRUE, prior.count=3)
+ dim(logCPM)
+group=c("FAD","FAD_ULK1","ULK1","WT")
+num=c(4,3,4,4)
+num
+group_list= factor(rep(group,num))
+  group_list
+  colData=data.frame(row.names = colnames(exprSet2),
+                     group=group_list)
+design <- model.matrix(~0+factor(group_list))
+design
+colnames(design)<-group
+rownames(design)<-colnames(exprSet)
+design
+contrast.matrix<-makeContrasts("FAD-FAD_ULK1","FAD-ULK1","FAD-WT","FAD_ULK1-WT","ULK1-WT",levels=design)
+#fit <- lmFit(eset, design)
+
+##step1
+fit <- lmFit(logCPM,design)
+##step2
+fit2 <- contrasts.fit(fit, contrast.matrix)
+fit2 <- eBayes(fit2)  
+
+tempOutput = topTable(fit2, coef=5, n=Inf)
+nrDEG2 = na.omit(tempOutput)
+table(tempOutput$adj.P.Val<0.05)
+
+summary(decideTests(fit2))
+```
+```{r}
+head(logCPM)
+ estimateDisp(logCPM, design, robust=TRUE) 
+fit3 <- glmFit(logCPM, design) 
+qlf <- glmQLFTest(fit3)
+topTags(qlf)
+```
+```{r}
+# rld<- rlogTransformation(dds)  ## 得到经过DESeq2软件normlization的表达矩阵！
+# exprSet_new=assay(rld)
+# par(cex = 0.7)
+# n.sample=ncol(exprSet)
+# if(n.sample>40) par(cex = 0.5)
+# cols <- rainbow(n.sample*1.2)
+# par(mfrow=c(2,2))
+# boxplot(exprSet, col = cols,main="expression value",las=2)
+# boxplot(exprSet_new, col = cols,main="expression value",las=2)
+# 
+# hist(exprSet_new)
+```
+`
+``{r}
+
+```{r}
+mulu<-"2021-08-09New/"
+
+for (i in 1:length(dir(mulu))){
+  data_name<-dir(mulu)[i]
+  data_name_csv<-gsub(".csv","",data_name)
+  assign(data_name_csv,read.csv(paste0(mulu,data_name),header = T))
+  
+  
+}
+
+
+```
+
+```{r}
+
+data_dir<-c()
+for (i in 1:length(dir(mulu))){
+  data_name<-dir(mulu)[i]
+  data_name_csv<-gsub(".csv","",data_name)
+  data_dir<-c(data_dir,data_name_csv)
+  
+ 
+}
+  
+
+data_dir
+
+```
+
+```{r}
+library(tidyverse)
+library("clusterProfiler")
+library("org.Mm.eg.db")
+library(ggplot2)
+library(RColorBrewer)
+library(gridExtra)
+library(enrichplot)
+library(ggsci)
+library(ggrepel)
+```
+
+## 绘制火山图
+```{r}
+
+
+vocanol_plot<-function(nrDEG,save_dir,group_name){
+  g= ggplot2::ggplot(data=nrDEG, aes(x=logFC, y=-log10(padj), colour=change, fill=change)) +
+  scale_color_manual(values=c('#4daf4a','grey','#e41a1c'))+
+  #scale_color_futurama()+
+  geom_point(alpha=0.4, size=1.5) +
+  # xlim(c(-4, 4)) +
+  # ylim(c(0, 7.5)) +
+  theme_bw(base_size = 12, base_family = "Times") +
+  geom_vline(xintercept=c(-0.5,0.5),lty=4,col="grey",lwd=0.6)+
+  geom_hline(yintercept =c( -log10(0.05), -log10(1)),lty=4,col="grey",lwd=0.6)+
+  theme(legend.position="right",
+        panel.grid=element_blank(),
+        legend.title = element_blank(),
+        legend.text= element_text(face="bold", color="black",family = "Times", size=8),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(face="bold", color="black", size=12),
+        axis.text.y = element_text(face="bold", color="black", size=12),
+        axis.title.x = element_text(face="bold", color="black", size=12),
+        axis.title.y = element_text(face="bold",color="black", size=12))+
+  labs(x="log2 (Fold Change)",y="-log10 (adjusted P-value)",title=paste0(group_name," Volcano Plot"))+
+  ggrepel::geom_text_repel(data=subset(nrDEG, abs(logFC) > 3 & padj < 0.05), aes(label=rownames(subset(nrDEG, abs(logFC) > 3 & padj < 0.05))),col="black",alpha = 0.8)
+png(paste0(save_dir,"/",group_name,"_Volcano Plot.png"),width=600*3,height=3*600,res=72*3) 
+print(g)
+
+dev.off()
+  
+}
+```
+
+## 绘制KEGG
+```{r}
+KEGG_plot<-function(kegg_names,save_dir,group_name){
+  enrichKK <-clusterProfiler::enrichKEGG(gene =kegg_names, organism = "mmu", 
+                       keyType = "kegg",
+                       pvalueCutoff = 0.05,
+                       pAdjustMethod = "BH",
+                       minGSSize = 10, maxGSSize = 500, 
+                       qvalueCutoff = 0.05,
+                       use_internal_data = FALSE)
+
+dak<-(length(head(enrichKK,20)$ID=="")!=0)
+if (dak){
+  dotk= dotplot2(enrichKK, 30)
+
+write.csv(enrichKK,paste0(save_dir,"/",group_name,"_kegg.csv"))
+png(paste0(save_dir,"/",group_name,"_kegg.png"),width=600*3,height=3*600,res=72*3) 
+ print(dotk)
+
+dev.off()
+  
+  
+}
+
+  
+}
+```
+```{r}
+library(DOSE)
+dotplot2=function(ego,number=20,name=""){
+  ego3 <- mutate(ego, richFactor = Count / as.numeric(sub("/\\d+", "", BgRatio)))
+  dotline=ggplot(ego3, showCategory = number, 
+ aes(richFactor, fct_reorder(Description, richFactor))) +
+ geom_segment(aes(xend=0, yend = Description)) +
+ geom_point(aes(color=p.adjust, size = Count)) +
+ scale_color_gradientn(colours=c("#f7ca64", "#46bac2", "#7e62a3"),
+ trans = "log10",
+ guide=guide_colorbar(reverse=TRUE, order=1)) +
+ scale_size_continuous(range=c(2, 10)) +
+ theme_dose(12) +
+ xlab("Rich Factor") +
+ ylab(NULL) +
+ ggtitle(paste0(group_name,"",name))
+  return(dotline)
+  
+} 
+```
+
+
+## 绘制GO分析图示
+```{r}
+
+## 绘制GO分析图示
+GO_plot<-function(go_name,save_dir,group_name){
+erichDEgo_all<-clusterProfiler::enrichGO(DEG_updown$symbol, OrgDb = org.Mm.eg.db, ont='ALL',pAdjustMethod = 'BH',pvalueCutoff = 0.05, 
+                    qvalueCutoff = 0.05,keyType = 'SYMBOL')
+
+
+# dotplot(erichDEgo, showCategory = 30,font.size = 8)
+# head(erichDEgo_all,100)
+
+dag<-(length(head(erichDEgo_all,20)$ID=="")!=0)
+if (dag){
+print("all right")
+  dot_all= dotplot2(erichDEgo_all,30)
+png(paste0(save_dir,"/",group_name,"_all_go.png"),width=600*3,height=3*600,res=72*3) 
+#print(clusterProfiler:: dotplot(erichDEgo_all, showCategory = 30,font.size = 8))
+print(dot_all)
+dev.off()
+
+write.csv(erichDEgo_all,paste0(save_dir,"/",group_name,"_all_go.csv"))
+
+complex<-c("BP","MF","CC") 
+data_go<-data.frame()
+for (o in 1:3){
+  ont<-complex[o]
+  print(ont)
+  
+  ego<-clusterProfiler:: enrichGO(rownames(DEG_updown), OrgDb = org.Mm.eg.db, ont=ont,pAdjustMethod = 'BH',pvalueCutoff = 0.05, 
+                    qvalueCutoff = 0.05,keyType = 'SYMBOL')
+  head(ego)
+  dag2<-(length(head(ego,20)$ID=="")!=0)
+  if(dag2){
+  head(ego)
+  
+  data_go<-rbind(data_go,data.frame(head(ego,20)))
+  dot_test=dotplot2(data_go,60)+coord_flip()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1))
+  
+
+  write.csv(ego,paste0(save_dir,"/",group_name,ont,"_Go.csv"))
+ 
+ dot= dotplot2(ego,30)
+
+
+  #dot= clusterProfiler:: dotplot(ego, showCategory = 30,font.size = 8)
+  png(paste0(save_dir,"/",group_name,"_",ont,"_go.png"),width=600*4,height=3*600,res=72*3) 
+  print(dot)
+  dev.off()
+  }
+  
+}
+png(paste0(save_dir,"/","01test",group_name,"_",ont,"_go.png"),width=600*3,height=4*600,res=72*3) 
+  print(dot_test)
+  dev.off()
+
+
+}
+}
+```
+
+## 进行差异分析
+
+```{r}
+
+Updown_compare<-function(group_name,save_dir){
+  
+  group_name2<-read.csv(paste0(mulu,group_name,".csv"),header = T)
+  group_name2<-group_name2[order(group_name2$padj),]#按照p值排序
+  rownames(group_name2)<-group_name2[,1]
+  rm(nrDEG)
+  nrDEG<-na.omit(group_name2)
+  head(nrDEG)
+  names(nrDEG)[names(nrDEG)=="log2FoldChange"]<-"logFC"
+  names(nrDEG)[names(nrDEG)=="pvalue"]<-"P.value"
+  #logFC_cutoff <- with( nrDEG, mean( abs( logFC ) ) + 2 * sd( abs( logFC ) ) )
+  logFC_cutoff=0.5
+  
+  nrDEG$change<-as.factor( ifelse( nrDEG$padj < 0.05 & abs(nrDEG$logFC) > logFC_cutoff,ifelse( nrDEG$logFC > logFC_cutoff ,'UP' , 'DOWN'), 'NOT' ) )
+  table(nrDEG$change)
+  
+  write.csv(nrDEG,paste0(save_dir,"/",group_name,"_data.csv"))
+  return(nrDEG)
+}
+```
+
+
+```{r}
+
+funct_dir<-"Resufunction" #主要修改目录
+unlink(funct_dir, recursive=TRUE)
+dir.create(funct_dir)
+
+library(ggplot2)
+data_all<-data.frame()
+for (i in 1:length(data_dir)){
+  rm(group_name)
+group_name<-data_dir[i] #单独运行之地
+  print(group_name)
+  rm(group_name2)
+  save_dir=paste0(funct_dir,"/",group_name)
+ dir.create(save_dir)
+ rm(nrDEG)
+print(paste0("Now is diffenece analyse about ",group_name))
+nrDEG=Updown_compare(group_name,save_dir)
+
+
+print(paste0("Now is Vocanol drawing"))
+  
+vocanol_plot(nrDEG,save_dir,group_name)
+
+rm(DEG_updown)
+DEG_updown<-filter(nrDEG,change=="UP"|change=="DOWN")
+DEG_updown$group<-rep(group_name,nrow(DEG_updown))
+data_all<-rbind(data_all,DEG_updown)
+
+write.csv(DEG_updown,paste0(save_dir,"/",group_name,"_updown.csv"))
+DEG_updown$symbol<-rownames(DEG_updown)
+df <-clusterProfiler:: bitr( rownames( DEG_updown ), fromType = "SYMBOL", toType = c( "ENTREZID" ), OrgDb = org.Mm.eg.db )
+
+DEGX<-merge(DEG_updown,df, by.y='SYMBOL',by.x='symbol')
+kegg_names<-DEGX$ENTREZID
+#draw KEGG plot
+print(paste0("Now is drawing KEGG plot"))
+KEGG_plot(kegg_names,save_dir,group_name)
+
+
+
+go_name<-DEG_updown$symbol
+#draw all kinds of Go plot
+print(paste0("Now is drawing GO plot"))
+GO_plot(go_name,save_dir,group_name)
+  
+}
+length(unique(data_all$X))
+table(data_all$group)
+sum(table(data_all$group))
+write_csv(data_all,"Resufunction/data_updown_all.csv")
+data2<-read.csv("A01_Datafile/data_updown_all.csv")
+table(data2$group)
+```
+
+
+```{r}
+ 
+
+
+```
+```{r}
+data_all["Ndufa2"]
+
+```
+
+
+```{r}
+
+# install.packages("gplots")
+library(gplots)
+#rm(list=ls())
+pjp_dataexpr<-read.csv("A01_Datafile/pjp_datexpr.csv",fill=NA)
+pjp_dataexpr<-pjp_dataexpr[!duplicated(pjp_dataexpr$gene_name),]
+rownames(pjp_dataexpr)<-pjp_dataexpr[,1]
+pjp_dataexpr<-pjp_dataexpr[,-1]
+pjp_dataexpr<-pjp_dataexpr[,sort(colnames(pjp_dataexpr))]
+pjp_dataexpr<-pjp_dataexpr[,-7]
+#colnames(pjp_dataexpr)<-paste(rep(c("F","FU","U","W"),c(4,3,4,4)),1:4,sep="_")
+#pheatmap(pjp_dataexpr[rowSums(pjp_dataexpr)>5,],scale = "row",show_colnames = T,show_rownames=F)
+
+
+```
+```{r}
+data_updown<-pjp_dataexpr[unique(data_all$X),]
+#data_updown<-data_updown[,-c(2,7,12,14)]
+
+colnames(data_updown)<-gsub("_fpkm","",colnames(data_updown))
+data_updown<-na.omit(data_updown)
+library(pheatmap)
+help("pheatmap")
+
+morecols <- colorRampPalette(c("red","black","springgreen","royalblue"))
+# mypalette <- brewer.pal(11,"PiYG")
+drows = dist(log2(data_updown+1), method = "minkowski")
+dcols = dist(t(log2(data_updown+1)), method = "minkowski")
+ph=pheatmap(log2(data_updown+1),scale="row",cluster_cols = F,show_rownames=F,cluster_rows = T,gaps_col = c(4,7,11),gaps_row = 500,lustering_distance_rows = drows, clustering_distance_cols = dcols,border_color="white",color = rev(morecols(150)),cutree_rows=3)
+
+ph
+```
+
+
+```{r}
+png(paste0("heatmap.png"),width=600*3,height=3*600,res=72*3) 
+
+ph
+dev.off()
+
+```
+
+```{r}
+library("Mfuzz")
+#构建对象
+colnames(data_updown)
+data_apply<-data.frame(WT=apply(data_updown[,10:12], 1, mean),FAD=apply(data_updown[,1:3], 1, mean),FAD_ULK1=apply(data_updown[,4:6], 1, mean),ULK1=apply(data_updown[,7:9], 1, mean))
+data_apply
+
+df3a<-as.matrix(data_apply[,1:3])
+df3Ex<- ExpressionSet(assayData = df3a)
+df3F <- filter.NA(df3Ex,thres = 0.25)
+#排除了超过25%的测量缺失的基因
+```
+
+```{r}
+
+df3F <- standardise(df3F)
+set.seed(2021)
+#手动定义聚类个数 c
+cl <- mfuzz(df3F,c=8,m=1.25)
+
+#作图
+pdf("mfuzz.pdf")
+mfuzz.plot2(df3F, cl=cl,mfrow=c(4,4),centre=TRUE,x11=F,centre.lwd=0.2,colo = morecols(8),xlab = "Mouse Type",time.labels=c("W","F","FU"))
+dev.off()
+#批量导出每个聚类所包含的基因
+dir.create(path="mfuzz",recursive = TRUE)
+mfuzz_data<-data.frame()
+for(i in 1:8){
+  potname<-names(cl$cluster[unname(cl$cluster)==i])
+  potname2<-data.frame(genes=potname,group=rep(paste0("cluster",i),length(potname)))
+  
+  mfuzz_data<-rbind(mfuzz_data,potname2)
+  write.csv(cl[[4]][potname,1],paste0("mfuzz","/mfuzz_",i,".csv"))
+}
+
+```
+
+
+
+```{r}
+
+
+data_updown
+
+
+write.csv(data_updown,"data_updown_exp.csv")
+write.csv(sample_annot2,"sample_annot2.csv")
+```
+```{r}
+data_updown<-log2(ceiling(data_updown))
+```
+```{r}
+
+library(tidyverse)
+len=length(unique(mfuzz_data$group))
+save_dir_mfuzz<-"Results/mfuzz_fun"
+dir.create(save_dir_mfuzz)
+for (mf in 1:len){
+  gro<-unique(mfuzz_data$group)[mf]
+  de<-filter(mfuzz_data,group==gro)
+g <-clusterProfiler:: bitr(de$genes,'SYMBOL', 'ENTREZID', 'org.Mm.eg.db')
+print(gro)
+KEGG_plot(g$ENTREZID,save_dir_mfuzz,gro)
+GO_plot(de$genes,save_dir_mfuzz,gro)
+
+
+
+}
+
+```
+
+```{r}
+
+#BiocManager::install("GSVA")
+#iocManager::install("msigdbr")
+library(GSVA)
+library(GSEABase)
+library(msigdbr)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(enrichplot)
+library(limma)
+#devtools::install_github("xjsun1221/tinyarray")
+#library(tinyarray)
+```
+```{r}
+msigdbr_species()
+```
+
+```{r}
+mouse<-msigdbr(species = "Mus musculus")
+mouse
+```
+```{r}
+table(mouse$gs_subcat)
+```
+
+```{r}
+KEGG_df = msigdbr(species = "Homo sapiens",category = "C2",subcategory = "CP:KEGG") %>% 
+  dplyr::select(gs_name,gs_exact_source,gene_symbol)
+head(KEGG_df)
+
+```
+```{r}
+length(unique(KEGG_df$gs_name))
+```
+
+```{r}
+GO_df = msigdbr(species = "Mus musculus",category = "C5") %>% 
+  dplyr::select(gs_name,gene_symbol,gs_exact_source,gs_subcat)
+dim(GO_df)
+GO_df = GO_df[GO_df$gs_subcat!="HPO",]
+table(GO_df$gs_subcat)
+```
+```{r}
+GO_df = GO_df[,c(1,2)]
+head(GO_df)
+```
+```{r}
+length(unique(GO_df$gene_symbol))
+length(unique(GO_df$gs_exact_source))
+```
+```{r}
+ge=group_FAD_vs_WT$log2FoldChange
+names(ge)<-group_FAD_vs_WT$X
+ge<-na.omit(ge)
+ge = sort(ge,decreasing = T)
+head(ge)
+length(intersect(names(ge),unique(KEGG_df$gene_symbol)))
+em <- GSEA(ge, TERM2GENE = GO_df, pAdjustMethod = "fdr", pvalueCutoff = 1)
+emkk<- GSEA(ge, TERM2GENE = KEGG_df[,c(1,3)], pAdjustMethod = "BH", pvalueCutoff = 1)
+length(unique(KEGG_df$gs_name))
+dim(emkk)
+dim(em)
+gseaplot2(emkk, geneSetID = 1, title = em$Description[1])
+emkk%>%arrange(NES)%>%tail(1000)%>%data.frame()
+data2<-em%>%arrange(desc(NES))%>%head(15)%>%data.frame()
+data3<-rbind(data,data2)
+data3$group<-ifelse(data3$NES>0,"P","N")
+data3$number<-c(1:50,1:15)
+library(ggplot2)
+help(arrange)
+ggplot(data3,aes(x=number,NES,color=group))+geom_point(size=3)+theme_bw()
+## 这里比较耗时：
+go_bp_gsea <- gseGO(geneList     = ge, 
+             OrgDb='org.Mm.eg.db',
+                    ont = 'BP',
+                     nPerm        = 1000,
+                     minGSSize    = 10,
+                     pvalueCutoff = 0.9,
+                     verbose      = FALSE)
+
+```
+
+
+```{r}
+kegg_list = split(KEGG_df$gene_symbol,KEGG_df$gs_exact_source)
+lapply(kegg_list[1:3], head)
+```
+
+
+```{r}
+exp<-log2(pjp_dataexpr+1)
+exp<-exp[,-c(2,7,12,14)]
+colnames(exp)<-gsub("_fpkm","",colnames(exp))
+exp2<-exp[,c(1:6)]
+exp2<-exp2[rowSums(exp2)>5,]
+exp2
+dim(exp2)
+```
+```{r}
+KEGG_ES <- gsva(expr=as.matrix(exp2), 
+               gset.idx.list=kegg_list)
+
+#gsva(RPKM, gene.sets, method="gsva", mx.diff=TRUE, verbose=TRUE, rnaseq=FALSE, parallel.sz=8)
+```
+```{r}
+KEGG_ES[1:4,1:4]
+```
+```{r}
+go_list = split(GO_df$gene_symbol,GO_df$gs_name)
+lapply(go_list[1:3], head)
+```
+
+
+```{r}
+GO_ES <- gsva(expr=as.matrix(exp2), 
+               gset.idx.list=go_list, method="ssgsea", 
+                 kcdf="Gaussian")
+```
+```{r}
+GO_ES[1:4,]
+```
+
+```{r}
+Group<-rep(c("FAD","FAD_ULK1"),each=3)
+design = model.matrix(~Group)
+fit = lmFit(GO_ES, design)
+fit = eBayes(fit)
+DEG = topTable(fit, coef = 2, number = Inf)
+head(DEG)
+dim(DEG)
+```
+
+```{r}
+go<-GO_ES[head(rownames(DEG),50),]
+rownames(go)<-gsub()
+pheatmap::pheatmap(go,scale = "row")
+go
+# draw_volcano(DEG,pkg = 4,logFC_cutoff = 0.5)
+```
+```{r}
+fit = lmFit(KEGG_ES, design)
+fit = eBayes(fit)
+DEG = topTable(fit, coef = 2, number = Inf)
+head(DEG)
+pheatmap::pheatmap(KEGG_ES[head(rownames(DEG),200),],scale = "row")
+```
+```{r}
+data(geneList,package="DOSE")
+head(geneList)
+```
+
+```{r}
+ge=group_FAD_vs_WT$log2FoldChange
+gename=names(ge)
+gmt <- 'wikipathways-20210710-gmt-Mus_musculus.gmt'
+wp <- read.gmt.wp(gmt)
+g <- bitr(group_FAD_vs_WT$X, 'SYMBOL', 'ENTREZID' ,'org.Mm.eg.db')
+g
+group_FAD_vs_WT<-na.omit(group_FAD_vs_WT)
+dim(group_FAD_vs_WT)
+cha<-merge(g,group_FAD_vs_WT,by.x="SYMBOL",by.y="X")
+cha
+gen<-cha$log2FoldChange
+names(gen)<-cha$ENTREZID
+gen<-sort(gen,decreasing = T)
+ewp <- GSEA(gen, TERM2GENE=wp[,c("wpid", "gene")], TERM2NAME=wp[,c("wpid", "name")],pvalueCutoff = 1)
+ewp_hl<-ewp
+dim(ewp)
+head(ewp,150)
+save_dir_gsea<-"Results/gsea"
+dir.create(save_dir_gsea)
+for (ged in 1:7){
+  gseplpt<-gseaplot2(ewp_hl, geneSetID = ged, title = ewp_hl$Description[ged],  pvalue_table=T, ES_geom = "line",color="#99d8c9", rel_heights = c(1.5, 0.5, 1))
+png(paste0(save_dir_gsea,"/",ewp_hl$Description[ged],"_GSEA Plot.png"),width=600*3,height=3*600,res=72*3) 
+print(gseplpt)
+
+dev.off()
+
+}
+
+
+
+png(paste0(save_dir_gsea,"/","GSEA Plot.png"),width=600*3,height=3*600,res=72*3) 
+print(ridgeplot(ewp_hl,fill = "p.adjust")+scale_fill_gradientn(colours=c('#b3eebe', "#46bac2", '#371ea3')))
+
+dev.off()
+help("ridgeplot")
+down<-ewp%>%arrange(NES)%>%head(30)%>%data.frame()
+up<-ewp%>%arrange(desc(NES))%>%head(30)%>%data.frame()
+up
+updown<-rbind(up,down)
+updown$number<-c(1:30,1:30)
+library(ggplot2)
+da2<-data.frame(a=c(0:30),y=rep(0,31))
+ggplot(updown,aes(x=number,NES))+geom_point(size=5)+geom_line(data=da2,aes(a,y))+theme(
+text=element_text(size=15,color="black"),
+plot.title=element_text(size=15,family="myfont",hjust=.5,color="black"),
+legend.position="none"
+)
+ggplot(updown,aes(x=number,NES))+
+geom_point(shape=21,size=4,color="black",fill="grey") +
+xlab("X-Axis")+
+ylab("Y-Axis")+
+ylim(-3,3 )+
+theme_classic()+
+theme(
+text=element_text(size=15,face="plain",color="black"),
+
+axis.title=element_text(size=10,face="plain",color="black"),
+axis.text = element_text(size=10,face="plain",color="black"),
+axis.line.x.top = 
+)+scale_y_continuous(limits = c(-3,3), expand = c(0,0))
+help(axis.linex.top)
+ggplot(iris, aes(y= Sepal.Length, x = Sepal.Width)) + geom_point()+ scale_x_continuous(limits = c(0,5), expand = c(0,0))
+write.csv(updown,"NES.csv")
+```
+```{r}
+data_hub<-read.csv("A01_Datafile/hubgene.csv",header = F)
+data_hub<-t(data_hub)
+rownames(data_hub)<-NULL
+data_hub<-as.vector(data_hub)
+data_hub<-gsub(" ","",data_hub)
+ ego_hub<-enrichGO(data_hub, OrgDb = org.Mm.eg.db, ont="ALL",pAdjustMethod = 'BH',pvalueCutoff = 0.05, 
+                    qvalueCutoff = 0.05,keyType = 'SYMBOL')
+head(ego_hub,100)
+write.csv(data_hub,"ego_hub.csv")
+```
+```{r}
+data_al[data_hub,]
+```
+```{r}
+data_updown[data_hub,]
+```
+
+
+```{r}
+library(tidyverse)
+  data_hub_box<-data_updown[data_hub,]
+data_hub_box<-as.data.frame(t(log2(data_hub_box+1)))
+
+data_hub_box$group<-rep(c("FAD","FAD_ULK1","ULK1","WT"),each=3)
+
+data_hub_box2<- melt(data_hub_box, id.vars=c("group"))
+data_hub_box2
+```
+
+```{r}
+library(ggsci)
+  ggplot(data_hub_box2, aes(x=variable,y=value,color=group,fill=group))+ 
+  geom_boxplot(outlier.shape = 21,color = "black") + 
+  theme_bw() + 
+  labs(x = "Gene", y = "Expression") +
+  theme(legend.position = "top") + 
+  theme(axis.text.x = element_text(angle=80,vjust = 0.5))+scale_fill_aaas()
+
+png(paste0("Results/","boxplot Plot.png"),width=600*6,height=3*600,res=72*3) 
+ggplot(data_hub_box2, aes(x=variable,y=value,color=group,fill=group))+ 
+  geom_boxplot(outlier.shape = 21,color = "black") + 
+  theme_bw() + 
+  labs(x = "Gene", y = "Expression") +
+  theme(legend.position = "top") + 
+  theme(axis.text.x = element_text(angle=80,vjust = 0.5))+scale_fill_aaas()+ylim(0,2)
+
+dev.off()
+
+
+```
+```{r}
+pheatmap::pheatmap(data_updown[data_hub,][,-ncol(data_hub_box)],cluster_cols = F,scale = "row",gaps_col = 6,gaps_row = 500,lustering_distance_rows = drows, clustering_distance_cols = dcols,border_color="white",color = rev(morecols(150)),cutree_rows=3)
+
+```
+```{r}
+png(paste0("Results/","pheatmap_hub.png"),width=600*3,height=3*600,res=72*3) 
+
+pheatmap::pheatmap(data_updown[data_hub,][,-ncol(data_hub_box)],cluster_cols = F,scale = "row",gaps_col = 6,gaps_row = 500,lustering_distance_rows = drows, clustering_distance_cols = dcols,border_color="white",color = rev(morecols(150)),cutree_rows=3)
+dev.off()
+```
+```{r}
+
+```
+
+

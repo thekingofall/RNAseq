@@ -1,0 +1,190 @@
+---
+title: "Untitled"
+author: "MLP"
+date: "2021/6/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+##  数据读取和数据预处理
+数据读取
+需要清理数据中的0
+将基因名字转换为sample名字
+```{r}
+rm(list=ls())
+```
+
+
+```{r}
+
+pjp_dataexpr<-read.csv("A01_Datafile/pjp_datexpr.csv",fill=NA)
+pjp_dataexpr<-pjp_dataexpr[!duplicated(pjp_dataexpr$gene_name),]
+rownames(pjp_dataexpr)<-pjp_dataexpr[,1]
+pjp_dataexpr<-pjp_dataexpr[,-1]
+
+```
+
+
+
+```{r}
+data <- pjp_dataexpr[rowSums(pjp_dataexpr)>6,]
+data <- data[apply(data, 1, var)!=0,]
+data<-log2(data+1)
+
+mads <- apply(data, 1, mad)
+data <- data[rev(order(mads)),]
+dim(data)
+data2<-scale(data)
+boxplot(data2)
+colnames(data2)
+
+
+
+```
+```{r}
+library(corrplot)
+library(pheatmap)
+
+
+```
+
+```{r}
+data2<-data2[,sort(colnames(data2))]
+data2<-data2[,-c(2,7,12,14)]
+colnames(data2)
+#data2<-data[,-7]
+```
+
+
+```{r}
+# data <- data[1:500,]
+# dim(data)
+# group<-data.frame(row.names = colnames(data),group=rep(c("FAD","FAD_ULK1","ULK1","WT"),each=4))
+# group2<-group[,-7]
+# 
+# fviz_eig(pca, addlabels = TRUE)
+# pca[["x"]]
+```
+```{r}
+pca <- prcomp(t(data2))
+# PCA分析
+
+library(factoextra)
+pca
+```
+
+```{r}
+# repel=T，自动调整文本位置
+
+fviz_pca_ind(pca, repel=T)   
+```
+
+```{r}
+group_data<-rep(c("F","FU","U","W"),c(4,3,4,4))
+pcax$group<-rep(c("F","FU","U","W"),c(4,3,4,4))
+ggplot(pcax,aes(x=PC1,y=PC2,color = group))+ geom_point()+stat_ellipse(level = 0.95, show.legend = F) + 
+annotate('text', label = 'F', x = -2, y = -1.25, size = 5, colour = '#f8766d') +
+annotate('text', label = 'FU', x = 0, y = - 0.5, size = 5, colour = '#00ba38') +
+annotate('text', label = 'U', x = 3, y = 0.5, size = 5, colour = '#619cff')
+annotate('text', label = 'W', x = 3, y = 0.5, size = 5, colour = '#619cff')
+
+```
+```{r}
+hc<-hclust(dist(exprSet,method = "euclidean"),method = "ward.D2")
+plot(hc)
+
+```
+
+
+```{r}
+pcax<-as.data.frame(pca[["x"]])
+pcax
+```
+```{r}
+library(plot3D)
+library(scales)
+library(RColorBrewer)
+library(fields)
+
+```
+```{r}
+pmar <- par(mar = c(6, 4.1, 4.1, 6.1))
+with(pcax, scatter3D(x = PC1, y = PC2, z = PC3, #bgvar = mag,
+pch = 21, cex = 1.5,col="black",bg="#F57446",
+xlab = "0-60 mph (sec)",
+ylab = "Gas Mileage (mpg)",
+zlab = "Power (kW)",
+zlim=c(40,180),
+ticktype = "detailed",bty = "f",box = TRUE,
+#panel.first = panelfirst,
+theta = 60, phi = 20, d=3,
+colkey = FALSE)#list(length = 0.5, width = 0.5, cex.clab = 0.75))
+)
+
+```
+
+
+```{r}
+#plotly 包，网页交互式，详情 ?plot_ly
+library(plotly)
+
+pcax<-pcax[sort(rownames(pcax)),]
+pcax$color<- rep(c('FAD', 'FAD_ULK1', 'ULK1',"WT"), c(4,3,4,4))
+```
+```{r}
+
+plot_ly(pcax,  x = ~PC1, y = ~PC2, z = ~PC3, color = ~color,showlegend=TRUE)
+  
+
+```
+```{r}
+
+shell("orca -h")
+```
+
+```{r}
+ plot_ly()%>% add_trace(x = pcax$PC1, y = pcax$PC2, z = pcax$PC3,
+            type="scatter3d", mode="markers",
+            marker = list(color=pcax$group, opacity = 0.7)) 
+```
+```{r}
+library(sva)
+batch<-group$group
+ex_b_sva = ComBat(dat=as.matrix(data), 
+                       batch=batch 
+                  )
+data2<-ex_b_sva
+```
+
+```{r}
+library(limma)
+g=factor(group$group)
+g=relevel(g,"FAD_ULK1")
+design=model.matrix(~g) 
+ex_b_limma <- removeBatchEffect(data,
+                                batch = batch,
+                                design = design)
+data2<-ex_b_limma
+boxplot(data2)
+```
+
+```{r}
+(data2)
+```
+
+```{r}
+colnames(data2)<-rep(c("F","FU","U","W"),each=4)
+colnames(data2)<-c(paste0("F",1:4),paste0("FU",1:4),paste0("U",1:4),paste0("W",1:4))
+ plot(hclust(dist(t(data2))))
+```
+```{r}
+library(pheatmap)
+help("pheatmap")
+pheatmap::pheatmap(data2,show_rownames=F,scale="row")
+ plot(hclust(dist(t(logCPM))))
+```
+
